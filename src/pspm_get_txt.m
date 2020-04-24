@@ -27,21 +27,58 @@ sourceinfo = []; sts = -1;
 
 % load & check data
 % -------------------------------------------------------------------------
+header_lines_counter = 0;
+% Check whether column seperator is specified
 fid = fopen(datafile);
-channel_names = textscan(fgetl(fid), '%s');
+line = textscan(fgetl(fid), '%s');
+delimiter = regexpi(line{:},'.*(sep=)([^\"]?).*','tokens');
+if ~isempty(delimiter)
+    % A delimiter is specified. 
+    % increment the header line counter
+    header_lines_counter = header_lines_counter+1;
+    if length(delimiter{1}{1})==1
+        % If second element is missing, assume TAB as delimiter
+        delimiter = '\t';  
+    else
+        % else, second element is delimiter
+        delimiter = delimiter{1}{1}{2};
+    end
+    % Load next line for checking channel names
+    channel_names = textscan(fgetl(fid), '%s','Delimiter',delimiter);
+else
+    % No delimiter is specified; use Matlab default delimiters
+    delimiter = {' ','\b','\t'};
+    % Current line might be channel_names. assigne to corresponding
+    % variable
+    channel_names = line;
+end
+
+% Check next line for channel names
 channel_names = channel_names{1};
-fclose(fid);
 
 fline = str2double(channel_names);
 if ~any(isnan(fline)) %no headerline
+    % close previously openend fil. this is done here so further header
+    % lines can be detected below
+    fclose(fid);
+    % read data from all channels
     data = dlmread(datafile);
 elseif all(isnan(fline)) %headerline
+    % check for more potential header lines
+    while all(isnan(fline))
+        % increment the header line counter
+        header_lines_counter = header_lines_counter+1;
+        line = textscan(fgetl(fid), '%s','Delimiter',delimiter);
+        fline = str2double(line{1});
+    end
+    % close and reopen file
+    fclose(fid);
     fid = fopen(datafile);
     formatSpec = '';
     for i=1:numel(channel_names)
         formatSpec = [formatSpec '%f'];
     end
-    data = textscan(fid, formatSpec, 'HeaderLines', 1);
+    data = textscan(fid, formatSpec, 'Delimiter',delimiter,'HeaderLines', 3);
     data = cell2mat(data);
     fclose(fid);
 else
